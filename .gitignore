@@ -1,0 +1,11 @@
+build/
+*.o
+*.out
+*.exe
+*.nsys-rep
+*.ncu-rep
+*.csv
+.vscode/
+__pycache__/
+
+
