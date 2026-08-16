@@ -1,13 +1,9 @@
 NVCC = nvcc
-ARCH = -arch=sm_89
-FLAGS = -O3 --use_fast_math -lcublas
-SRC = src/main.cu
+CCBIN = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64"
+FLAGS = -ccbin $(CCBIN) -arch=sm_89 -O3
 
-sgemm: $(SRC)
-	$(NVCC) $(ARCH) $(FLAGS) $(SRC) -o sgemm
+test: test.cu
+	$(NVCC) $(FLAGS) -o test test.cu
 
 clean:
-	rm -f sgemm *.o
-
-
-	
+	del test.exe
