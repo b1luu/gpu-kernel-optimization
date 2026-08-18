@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <cuda_runtime.h>
-#include "src/kernels/naive.cuh"
+#include "src/kernels/coalesced.cuh"
 
 int main() {
     // Larger matrix sizes for performance comparison.
@@ -31,17 +31,17 @@ int main() {
     dim3 grid((N + block.x - 1) / block.x,
               (M + block.y - 1) / block.y);
 
-    // --- launch the kernel (timed) ---
+    // --- launch the kernel ---
     float alpha = 1.0f, beta = 0.0f;
+    const int WARMUP_RUNS = 3;
+    const int TIMED_RUNS = 10;
 
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
-
-    cudaEventRecord(start);
-    matMult<<<grid, block>>>(d_A, d_B, d_C, alpha, beta, M, N, K);
-    cudaEventRecord(stop);
-    cudaEventSynchronize(stop);
+    // Warm-up (untimed): absorbs module/JIT loading and GPU clock ramp-up
+    // so those one-time costs don't pollute the measured kernel time.
+    for (int i = 0; i < WARMUP_RUNS; i++) {
+        matMult<<<grid, block>>>(d_A, d_B, d_C, alpha, beta, M, N, K);
+    }
+    cudaDeviceSynchronize();
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -49,10 +49,23 @@ int main() {
         return 1;
     }
 
-    float ms = 0.0f;
-    cudaEventElapsedTime(&ms, start, stop);
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start);
+    for (int i = 0; i < TIMED_RUNS; i++) {
+        matMult<<<grid, block>>>(d_A, d_B, d_C, alpha, beta, M, N, K);
+    }
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+
+    float total_ms = 0.0f;
+    cudaEventElapsedTime(&total_ms, start, stop);
+    float ms = total_ms / TIMED_RUNS;
     double gflops = (2.0 * M * N * K) / (ms * 1e6);
-    printf("M=%d N=%d K=%d  time=%.3f ms  %.2f GFLOPS\n", M, N, K, ms, gflops);
+    printf("M=%d N=%d K=%d  avg time=%.3f ms  %.2f GFLOPS  (%d runs)\n",
+           M, N, K, ms, gflops, TIMED_RUNS);
 
     cudaEventDestroy(start);
     cudaEventDestroy(stop);
