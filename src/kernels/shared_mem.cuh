@@ -33,6 +33,6 @@ __global__ void matMult(const float* A, const float* B, float* C, int M, int K, 
         As[ty][tx] = A[row * K + aCol];
         Bs[ty][tx] = B[bRow * N + col];
     }
-    __syncthreads()
+    __syncthreads();
 }
  
