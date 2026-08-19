@@ -29,10 +29,13 @@ __global__ void matMult(const float* A, const float* B, float* C, float alpha, f
             Bs[ty][tx] = 0.0f;
 
         __syncthreads();   // barrier 1: tile fully loaded before anyone reads
+        for (int k = 0; k < TILE; k++) {
+            dot_prod += As[ty][k] * Bs[k][tx];
+        }
+        __syncthreads();
 
-        // ── MISSING: k-loop accumulating into dot_prod ──
-        
     }
-
-   
+    if (row < M && col < N)
+        C[row * N + col] = alpha * dot_prod + beta * C[row * N + col];
+    
 }
