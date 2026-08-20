@@ -2,11 +2,9 @@
 #include <cstdlib>
 #include <cmath>
 #include <cuda_runtime.h>
-#include "src/kernels/coalesced.cuh"
+#include "src/kernels/register_blocked.cuh"
 
 int main() {
-    // Larger matrix sizes for performance comparison.
-    // Set VERIFY to 0 to skip the O(M*N*K) CPU reference check on big sizes.
     int M = 1024, N = 1024, K = 1024;
     const bool VERIFY = (M <= 1024 && N <= 1024 && K <= 1024);
 
@@ -22,22 +20,21 @@ int main() {
     cudaMalloc(&d_B, K * N * sizeof(float));
     cudaMalloc(&d_C, M * N * sizeof(float));
 
-    // --- copy inputs host -> device ---
     cudaMemcpy(d_A, h_A, M * K * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, h_B, K * N * sizeof(float), cudaMemcpyHostToDevice);
 
-    // --- launch configuration ---
-    dim3 block(16, 16);
-    dim3 grid((N + block.x - 1) / block.x,
-              (M + block.y - 1) / block.y);
+    // ---- launch config ----  YOU FILL THIS
+    // block: this kernel is written for one thread per output-row-group,
+    //        not one thread per output element — how many threads total
+    //        does register_blocked.cuh expect per block? (see its header comment)
+    // grid:  one block per BM x BN tile of C — how many tiles cover M x N?
+    dim3 block(BM * BN / TM);
+    dim3 grid(N / BN, M / BM);
 
-    // --- launch the kernel ---
     float alpha = 1.0f, beta = 0.0f;
     const int WARMUP_RUNS = 3;
     const int TIMED_RUNS = 10;
 
-    // Warm-up (untimed): absorbs module/JIT loading and GPU clock ramp-up
-    // so those one-time costs don't pollute the measured kernel time.
     for (int i = 0; i < WARMUP_RUNS; i++) {
         matMult<<<grid, block>>>(d_A, d_B, d_C, alpha, beta, M, N, K);
     }
@@ -92,21 +89,8 @@ int main() {
     printf("]  min=%.3f ms (%.2f GFLOPS)  median=%.3f ms (%.2f GFLOPS)\n",
            minMs, gflopsMin, medianMs, gflopsMedian);
 
-    // --- copy result device -> host ---
     cudaMemcpy(h_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost);
 
-    // --- print result (small sizes only) ---
-    if (M <= 8 && N <= 8) {
-        printf("C = A * B:\n");
-        for (int i = 0; i < M; i++) {
-            for (int j = 0; j < N; j++) {
-                printf("%6.1f ", h_C[i * N + j]);
-            }
-            printf("\n");
-        }
-    }
-
-    // --- CPU reference + compare (skipped for large sizes) ---
     if (VERIFY) {
         float *ref = (float*)malloc(M * N * sizeof(float));
         for (int i = 0; i < M; i++) {

@@ -1,6 +1,6 @@
 #define TILE 16
 
-__global__ void matMult(const float* A, const float* B, float* C, float alpha, float beta, int M, int K, int N){
+__global__ void matMult(const float* A, const float* B, float* C, float alpha, float beta, int M, int N, int K){
     __shared__ float As[TILE][TILE];   // shared tile for A (reused each t)
     __shared__ float Bs[TILE][TILE];   // shared tile for B (reused each t)
 

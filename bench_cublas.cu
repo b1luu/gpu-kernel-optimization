@@ -2,11 +2,9 @@
 #include <cstdlib>
 #include <cmath>
 #include <cuda_runtime.h>
-#include "src/kernels/coalesced.cuh"
+#include <cublas_v2.h>
 
 int main() {
-    // Larger matrix sizes for performance comparison.
-    // Set VERIFY to 0 to skip the O(M*N*K) CPU reference check on big sizes.
     int M = 1024, N = 1024, K = 1024;
     const bool VERIFY = (M <= 1024 && N <= 1024 && K <= 1024);
 
@@ -22,30 +20,34 @@ int main() {
     cudaMalloc(&d_B, K * N * sizeof(float));
     cudaMalloc(&d_C, M * N * sizeof(float));
 
-    // --- copy inputs host -> device ---
     cudaMemcpy(d_A, h_A, M * K * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, h_B, K * N * sizeof(float), cudaMemcpyHostToDevice);
 
-    // --- launch configuration ---
-    dim3 block(16, 16);
-    dim3 grid((N + block.x - 1) / block.x,
-              (M + block.y - 1) / block.y);
+    cublasHandle_t handle;
+    cublasCreate(&handle);
 
-    // --- launch the kernel ---
     float alpha = 1.0f, beta = 0.0f;
     const int WARMUP_RUNS = 3;
     const int TIMED_RUNS = 10;
 
-    // Warm-up (untimed): absorbs module/JIT loading and GPU clock ramp-up
-    // so those one-time costs don't pollute the measured kernel time.
+    // cuBLAS is column-major; our A/B/C buffers are row-major.
+    // Row-major C(MxN) = A(MxK)*B(KxN) is equivalent to column-major
+    // C^T(NxM) = B^T(NxK) * A^T(KxM), which is what this call computes
+    // by swapping A<->B and M<->N (no actual transpose op needed).
     for (int i = 0; i < WARMUP_RUNS; i++) {
-        matMult<<<grid, block>>>(d_A, d_B, d_C, alpha, beta, M, N, K);
+        cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                    N, M, K,
+                    &alpha,
+                    d_B, N,
+                    d_A, K,
+                    &beta,
+                    d_C, N);
     }
     cudaDeviceSynchronize();
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
-        printf("Kernel launch error: %s\n", cudaGetErrorString(err));
+        printf("cuBLAS launch error: %s\n", cudaGetErrorString(err));
         return 1;
     }
 
@@ -62,7 +64,13 @@ int main() {
     for (int t = 0; t < TRIALS; t++) {
         cudaEventRecord(start);
         for (int i = 0; i < TIMED_RUNS; i++) {
-            matMult<<<grid, block>>>(d_A, d_B, d_C, alpha, beta, M, N, K);
+            cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N,
+                        N, M, K,
+                        &alpha,
+                        d_B, N,
+                        d_A, K,
+                        &beta,
+                        d_C, N);
         }
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
@@ -92,21 +100,8 @@ int main() {
     printf("]  min=%.3f ms (%.2f GFLOPS)  median=%.3f ms (%.2f GFLOPS)\n",
            minMs, gflopsMin, medianMs, gflopsMedian);
 
-    // --- copy result device -> host ---
     cudaMemcpy(h_C, d_C, M * N * sizeof(float), cudaMemcpyDeviceToHost);
 
-    // --- print result (small sizes only) ---
-    if (M <= 8 && N <= 8) {
-        printf("C = A * B:\n");
-        for (int i = 0; i < M; i++) {
-            for (int j = 0; j < N; j++) {
-                printf("%6.1f ", h_C[i * N + j]);
-            }
-            printf("\n");
-        }
-    }
-
-    // --- CPU reference + compare (skipped for large sizes) ---
     if (VERIFY) {
         float *ref = (float*)malloc(M * N * sizeof(float));
         for (int i = 0; i < M; i++) {
@@ -133,5 +128,6 @@ int main() {
 
     free(h_A); free(h_B); free(h_C);
     cudaFree(d_A); cudaFree(d_B); cudaFree(d_C);
+    cublasDestroy(handle);
     return 0;
 }
