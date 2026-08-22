@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <cuda_runtime.h>
-#include "src/kernels/register_blocked_2d.cuh"
+#include "src/kernels/vectorized.cuh"
 
 int main() {
     int M = 1024, N = 1024, K = 1024;
@@ -23,13 +23,8 @@ int main() {
     cudaMemcpy(d_A, h_A, M * K * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, h_B, K * N * sizeof(float), cudaMemcpyHostToDevice);
 
-    // ---- launch config ----  YOU FILL THIS
-    // block: one thread per TMxTN output tile, not one thread per output
-    //        element — how many threads total does register_blocked_2d.cuh
-    //        expect per block? (see its header comment)
-    // grid:  one block per BM x BN tile of C.
     dim3 block((BM * BN) / (TM * TN));
-    dim3 grid (N / BN, M / BM);
+    dim3 grid(N / BN, M / BM);
 
     float alpha = 1.0f, beta = 0.0f;
     const int WARMUP_RUNS = 3;
@@ -46,10 +41,6 @@ int main() {
         return 1;
     }
 
-    // Multiple independent trials, not just one: GPU boost-clock state can
-    // vary between process launches (idle-ramp vs. already-busy), so a
-    // single trial's average can be misleadingly high or low. Report
-    // min/median across trials instead of trusting any one number.
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);

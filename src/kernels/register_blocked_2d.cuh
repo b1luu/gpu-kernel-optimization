@@ -27,7 +27,7 @@ __global__ void matMult(const float* A, const float* B, float* C, float alpha, f
     // than BM*BK, so each thread loads BM*BK / numThreads elements by
     // striding down the BM dimension in a loop.
     int innerRowA = threadIdx.x / BK;
-    int innerColA = threadIdx.x % BK;
+    int innerColA = threadIdx.x % BK; 
     int strideA = ((BM * BN) / (TM * TN)) / BK;  // = numThreads / BK
 
     // Bs is BK x BN; same idea, striding down the BK dimension.
@@ -52,15 +52,15 @@ __global__ void matMult(const float* A, const float* B, float* C, float alpha, f
 
         for (int dotIdx = 0; dotIdx < BK; dotIdx++) {
             // cache this dotIdx's slice of As and Bs into registers once...
-            for (int i = 0; i < TM; i++) regM[i] = /* ? */;
-            for (int j = 0; j < TN; j++) regN[j] = /* ? */;
+            for (int i = 0; i < TM; i++) regM[i] = As[threadRow*TM + i][dotIdx];
+            for (int j = 0; j < TN; j++) regN[j] = Bs[dotIdx][threadCol*TN + j];
 
             // ...then reuse them for an outer product: TM*TN FMAs from
             // only TM+TN shared-memory reads (vs register_blocked.cuh's
             // TM FMAs from TM+1 reads — this is the whole point of 2D).
             for (int i = 0; i < TM; i++) {
                 for (int j = 0; j < TN; j++) {
-                    threadResults[i * TN + j] += /* ? */;
+                    threadResults[i * TN + j] += regM[i] * regN[j];
                 }
             }
         }
@@ -69,8 +69,8 @@ __global__ void matMult(const float* A, const float* B, float* C, float alpha, f
 
     for (int i = 0; i < TM; i++) {
         for (int j = 0; j < TN; j++) {
-            int row = /* ? */;
-            int col = /* ? */;
+            int row = blockRow + threadRow * TM + i;
+            int col = blockCol + threadCol * TN + j;
             C[row * N + col] = alpha * threadResults[i * TN + j] + beta * C[row * N + col];
         }
     }
