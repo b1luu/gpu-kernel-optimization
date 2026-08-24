@@ -7,19 +7,19 @@ Learning project: implementing and optimizing single-precision GEMM (`C = alpha*
 ```
 src/kernels/     naive.cuh, coalesced.cuh, shared_mem.cuh, register_blocked.cuh,
                  register_blocked_2d.cuh, vectorized.cuh, vectorized_padded.cuh,
-                 warp_tiled.cuh, warp_tiled_padded.cuh — implemented
-                 tiled.cuh — unused placeholder
+                 warp_tiled.cuh, warp_tiled_padded.cuh
 src/main.cu      standalone runner for shared_mem.cuh (M=N=K=512, correctness check only)
 include/utils.cuh
 benchmark/bench.py
-test.cu                    benchmark harness: builds/runs whichever kernel header it #includes
-test_register.cu           same harness, dedicated to register_blocked.cuh (different launch shape)
-test_register_2d.cu        same harness, dedicated to register_blocked_2d.cuh (different launch shape)
-test_vectorized.cu         same harness, dedicated to vectorized.cuh (different launch shape)
-test_vectorized_padded.cu  same harness, dedicated to vectorized_padded.cuh
-test_warp_tiled.cu         same harness, dedicated to warp_tiled.cuh (different launch shape)
-test_warp_tiled_padded.cu  same harness, dedicated to warp_tiled_padded.cuh
-bench_cublas.cu            same harness against cublasSgemm, for a reference/upper-bound comparison
+bench_harness.cuh          shared benchmark logic (malloc/timing/verify) used by every test_*.cu below
+test.cu                    thin wrapper: builds/runs whichever kernel header it #includes (naive/coalesced/shared_mem)
+test_register.cu           thin wrapper for register_blocked.cuh
+test_register_2d.cu        thin wrapper for register_blocked_2d.cuh
+test_vectorized.cu         thin wrapper for vectorized.cuh
+test_vectorized_padded.cu  thin wrapper for vectorized_padded.cuh
+test_warp_tiled.cu         thin wrapper for warp_tiled.cuh
+test_warp_tiled_padded.cu  thin wrapper for warp_tiled_padded.cuh
+bench_cublas.cu            thin wrapper around cublasSgemm, for a reference/upper-bound comparison
 documents/                 write-up for each optimization step
 ```
 
@@ -31,6 +31,8 @@ make test        # builds test.exe via nvcc (uses MSVC path set in Makefile)
 ```
 
 `test.cu` includes one kernel header at a time — swap the `#include "src/kernels/..."` line to benchmark a different kernel.
+
+Every kernel shares the identical signature `matMult(A, B, C, alpha, beta, M, N, K)`, so `bench_harness.cuh`'s `runBenchmark(label, M, N, K, launch)` handles all the shared benchmark mechanics (malloc, memcpy, warm-up, 5-trial timing with min/median, CPU-reference verification) once; each `test_*.cu` is just its `#include`, a `dim3 block`/`dim3 grid` computed from that kernel's own tile macros, and a one-line lambda calling `matMult<<<grid, block>>>(...)`. To benchmark a new kernel, copy any existing `test_*.cu` and swap those three things.
 
 To build the cuBLAS reference benchmark (needs `-lcublas`):
 
