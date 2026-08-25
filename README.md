@@ -9,8 +9,8 @@ src/kernels/     naive.cuh, coalesced.cuh, shared_mem.cuh, register_blocked.cuh,
                  register_blocked_2d.cuh, vectorized.cuh, vectorized_padded.cuh,
                  warp_tiled.cuh, warp_tiled_padded.cuh
 src/main.cu      standalone runner for shared_mem.cuh (M=N=K=512, correctness check only)
-include/utils.cuh
-benchmark/bench.py
+include/utils.cuh   empty — unused placeholder
+benchmark/bench.py  empty — unused placeholder
 bench_harness.cuh          shared benchmark logic (malloc/timing/verify) used by every test_*.cu below
 test.cu                    thin wrapper: builds/runs whichever kernel header it #includes (naive/coalesced/shared_mem)
 test_register.cu           thin wrapper for register_blocked.cuh
@@ -25,10 +25,14 @@ documents/                 write-up for each optimization step
 
 ## Build & run
 
+`make` isn't installed by default on Windows (and isn't guaranteed to be on PATH even with the CUDA toolkit + Visual Studio installed) — the `Makefile` is a convenience wrapper for anyone who has it, but the commands below are what's actually been used and verified throughout this project's development:
+
+```powershell
+nvcc -ccbin <path-to-cl.exe-dir> -arch=sm_89 -O3 test.cu -o test.exe
+.\test.exe
 ```
-make test        # builds test.exe via nvcc (uses MSVC path set in Makefile)
-./test.exe
-```
+
+`<path-to-cl.exe-dir>` is the folder containing MSVC's `cl.exe`, e.g. `C:\Program Files\Microsoft Visual Studio\<version>\<edition>\VC\Tools\MSVC\<version>\bin\Hostx64\x64` — needed because `nvcc` shells out to it as the host compiler and it usually isn't on `PATH` outside a Visual Studio developer prompt. If you do have `make` on `PATH`, `make test` runs the same build (edit `CCBIN` at the top of the `Makefile` to match your MSVC install first).
 
 `test.cu` includes one kernel header at a time — swap the `#include "src/kernels/..."` line to benchmark a different kernel.
 

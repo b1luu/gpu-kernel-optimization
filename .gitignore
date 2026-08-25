@@ -2,6 +2,9 @@ build/
 *.o
 *.out
 *.exe
+/test
+/test_*
+!/test_*.cu
 *.nsys-rep
 *.ncu-rep
 *.csv
